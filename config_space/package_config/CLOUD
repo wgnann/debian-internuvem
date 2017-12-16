@@ -1,27 +1,16 @@
-PACKAGES install
-locales
+PACKAGES install-norec
 openssh-server
-cloud-init
-cloud-utils
 cloud-guest-utils
 sudo
 
-xz-utils
-mdadm
-
-dbus
+# needed for any useful login session
+libpam-systemd
 
 unattended-upgrades
 
-PACKAGES install JESSIE
-cloud-init/$release-backports
-cloud-utils/$release-backports
-cloud-guest-utils/$release-backports
+# We're going with chrony as our default ntp client in light of
+# https://lwn.net/Articles/735211/
+chrony
 
-PACKAGES remove
-# The following are installed as a Recommends of packages we explicitly
-# install, but are not generally needed on a cloud image.
-exim4-base
-exim4-config
-exim4-daemon-light
-busybox
+PACKAGES install-norec JESSIE
+cloud-guest-utils/$release-backports

@@ -1,33 +1,57 @@
 # path to the config space shoud be absolute, see fai.conf(5)
-PWD != pwd
+BUILDER_IMG = http://cdimage.debian.org/cdimage/openstack/current-9/debian-9-openstack-amd64.qcow2
+FORMAT_NEEDED = raw
+UPPER_CLOUD = $(shell echo $(CLOUD) | tr '[:lower:]' '[:upper:]')
+UPPER_DIST = $(shell echo $(DIST) | tr '[:lower:]' '[:upper:]')
+PWD := $(shell readlink -f .)
+SPACE = 8
 
-generic-vm-image-stretch-image.raw:
-	sudo fai-diskimage --hostname debian-stretch --size 8G \
-	--class DEBIAN,STRETCH,AMD64,GRUB_PC,DHCPC,VM_IMAGE \
-	--cspace $(PWD)/config_space $@ || rm $@
+VALID_CLOUDS = (azure|ec2|gce|openstack|vm|vagrant)
+VALID_DISTS = (stretch|buster)
 
-# based on https://noah.meyerhans.us/blog/2017/02/10/using-fai-to-customize-and-build-your-own-cloud-images/
-ec2-stretch-image.raw:
-	sudo fai-diskimage --hostname debian-stretch --size 8G \
-	--class DEBIAN,STRETCH,AMD64,GRUB_PC,CLOUD,EC2 \
-	--cspace $(PWD)/config_space $@ || rm $@
-
-#TODO ask kula to check if this really works
-gce-stretch-image.raw:
-	sudo fai-diskimage --hostname debian-stretch --size 8G \
-	--class DEBIAN,STRETCH,AMD64,GRUB_PC,CLOUD,EC2 \
-	--cspace $(PWD)/config_space $@ || rm $@
-
-vagrant-stretch-image.raw:
-	sudo fai-diskimage --hostname debian-stretch --size 8G \
-	--class DEBIAN,STRETCH,AMD64,GRUB_PC,DHCPC,VM_IMAGE,VAGRANT \
-	--cspace $(PWD)/config_space $@ || rm $@
+ifeq ($(CLOUD),openstack)
+  SPACE = 2
+else ifeq ($(CLOUD),azure)
+  FORMAT_NEEDED = vhd
+else ifeq ($(CLOUD),gce)
+  SPACE = 10
+endif
 
 help:
-	@echo "available targets:"
-	@echo "make generic-vm-image-stretch-image.raw"
-	@echo "make ec2-stretch-image.raw"
-	@echo "make gce-stretch-image.raw"
+	@echo "To run this makefile, run:"
+	@echo "   make <DIST>-image-<CLOUD>"
+	@echo "  WHERE <DIST> is buster or stretch"
+	@echo "    And <CLOUD> is azure, ec2, gce, openstack, vagrant"
+
+_image.raw:
+	@echo $(CLOUD) | egrep -q "$(VALID_CLOUDS)" || { \
+		 echo "$(CLOUD) is an invalid. Valid clouds are $(VALID_CLOUDS)"; exit 1; }
+	@echo $(DIST) | egrep -q "$(VALID_DISTS)" || { \
+		echo "$(DIST) is an invalid. Valid clouds are $(VALID_DISTS)"; exit 1; }
+	umask 022; \
+	sudo fai-diskimage -v \
+		--hostname debian-$(DIST) \
+		--size $(SPACE)G \
+		--class DEBIAN,$(UPPER_DIST),AMD64,GRUB_PC,CLOUD,$(UPPER_CLOUD) \
+		--cspace $(PWD)/config_space $(CLOUD)-$(DIST)-image.raw
+ifeq ($(FORMAT_NEEDED), vhd)
+	qemu-img convert -f raw -o subformat=fixed,force_size -O vpc \
+		$(CLOUD)-$(DIST)-image.raw $(CLOUD)-$(DIST)-image.vhd
+endif
+
+buster-image-%:
+	${MAKE} _image.raw CLOUD=$* DIST=buster
+
+stretch-image-%:
+	${MAKE} _image.raw CLOUD=$* DIST=stretch
+
+
+kvm-%:
+	bin/launch_kvm.sh --id $*-$(shell date +%s) \
+		--target $* \
+		--img-url $(BUILDER_IMG)
+
+clean: cleanall
 
 cleanall:
-	rm *.raw
+	rm -rf *.raw *vhd

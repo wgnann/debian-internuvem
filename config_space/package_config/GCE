@@ -1,28 +1,14 @@
 PACKAGES install
 google-cloud-packages-archive-keyring
 cloud-initramfs-growroot
-cloud-utils/$release-backports
 google-cloud-sdk
-google-compute-engine-$release
-google-compute-engine-init-$release
-google-config-$release
-python-crcmod/$release-backports
-screen
-vim
+google-compute-engine
+python-crcmod
+python-google-compute-engine
+# Remove the next line once Google fixes this:
+# https://github.com/GoogleCloudPlatform/compute-image-packages/issues/505
+chrony- ntp
 
-acpi-support-base
-busybox
-ca-certificates
-curl
-ethtool
-gdisk
-kpartx
-isc-dhcp-client
-lsb-release
-ntp
-parted
-python
-openssh-client
-openssh-server
-sudo
-uuid-runtime
+PACKAGES install JESSIE
+cloud-utils/$release-backports
+python-crcmod/$release-backports
