@@ -328,6 +328,11 @@ class BuildCommand(BaseCommand):
             help='date part of version (default: today)',
             type=cls._argparse_type_date,
         )
+        parser.add_argument(
+            '--no-compress',
+            action='store_false',
+            dest='compress',
+        )
 
     @staticmethod
     def _argparse_type_date(s):
@@ -337,10 +342,14 @@ class BuildCommand(BaseCommand):
             msg = "Given date ({0}) is not valid. Expected format: 'YYYY-MM-DD'".format(s)
             raise argparse.ArgumentTypeError(msg)
 
-    def __init__(self, *, release=None, vendor=None, arch=None, version=None, build_id=None, build_type=None, localdebs=False, output=None, noop=False, override_name=None, version_date=None, **kw):
+    def __init__(self, *, release=None, vendor=None, arch=None, version=None,
+                 build_id=None, build_type=None, localdebs=False, output=None,
+                 noop=False, override_name=None, version_date=None,
+                 compress=True, **kw):
         super().__init__(**kw)
 
         self.noop = noop
+        self.compress = compress
 
         self.c = Check()
         self.c.set_type(build_type)
@@ -391,12 +400,24 @@ class BuildCommand(BaseCommand):
             image_raw.as_posix(),
         )
 
+        self.cmd_xz = (
+            'xz',
+            '-vkfT0',
+            image_tar.as_posix(),
+        )
+
     def __call__(self):
         logging.info('Running: %s; %s', ' '.join(self.cmd), ' '.join(self.cmd_tar))
 
         if not self.noop:
             subprocess.check_call(self.cmd, env=self.env)
             subprocess.check_call(self.cmd_tar)
+
+        if self.compress:
+            logging.info('Running: %s', ' '.join(self.cmd_xz))
+
+            if not self.noop:
+                subprocess.check_call(self.cmd_xz)
 
 
 if __name__ == '__main__':

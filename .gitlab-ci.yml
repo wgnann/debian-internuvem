@@ -99,7 +99,6 @@ test pytest latest:
       --build-id ${CLOUD_IMAGE_BUILD_ID}
       --build-type ${CLOUD_IMAGE_TYPE}
       ${CLOUD_RELEASE} ${CLOUD_VENDOR} ${CLOUD_ARCH}
-    - 'xz -vk5T0 *.tar'
   artifacts:
     name: debian-${CLOUD_RELEASE}-${CLOUD_VENDOR}-${CLOUD_ARCH}
     expire_in: 7 days
