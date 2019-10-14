@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -e
+
+# Disable haproxy by default:
+# it is started and running on a namespace,
+# and the "main" service shouldn't be running.
+chroot ${target} update-rc.d haproxy disable
+chroot ${target} update-rc.d -f haproxy remove
+
+# Fix defaults of haproxy logrotate, so that we don't keep too much
+# log files, as the Amphora image is kind of super small (typically
+# 500 MB of HDD remaining), and with high traffic, it can fill-up
+# the HDD, meaning a reboot make the Amphora go into ERROR state
+# (real life experience here...).
+# This should be ok since /etc/logrotate.d/haproxy is CONFFILE.
+sed -i s/daily/hourly/ ${target}/etc/logrotate.d/haproxy
+sed -i 's/rotate 52/rotate 3/' ${target}/etc/logrotate.d/haproxy

@@ -363,6 +363,13 @@ genericcloud sid amd64 build:
     CLOUD_RELEASE: sid
     CLOUD_VENDOR: genericcloud
 
+octavia bullseye amd64 build:
+  extends: .generic build
+  variables:
+    CLOUD_ARCH: amd64
+    CLOUD_RELEASE: bullseye
+    CLOUD_VENDOR: octavia
+
 .nocloud build:
   extends: .build
   rules:
