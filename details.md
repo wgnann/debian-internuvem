@@ -66,10 +66,14 @@ These are classes containing architecture specific configs:
 Release specific classes:
 
 * BULLSEYE
-* BULLSEYE_BUILD
 * BUSTER
-* BUSTER_BUILD
 * SID
-* SID_BUILD
 * STRETCH
+
+
+Only for internal use:
+
+* BULLSEYE_BUILD
+* BUSTER_BUILD
+* SID_BUILD
 * STRETCH_BUILD
