@@ -11,6 +11,11 @@ DUIDFILE="/var/lib/dhcp/dhclient-6.$IFACE.leases"
 
 case "$MODE" in
     start)
+        if [ "$(/sbin/sysctl --values net.ipv6.conf.${IFACE}.disable_ipv6)" != 0 ]; then
+            # If the administrator has disabled IPv6 support, then the start operation
+            # should be a successful no-op.
+            exit 0
+        fi
         ip link set $IFACE up
         /lib/ifupdown/wait-for-ll6.sh || exit 1
         /sbin/dhclient -v -6 -nw -pf $PIDFILE -lf $LEASESFILE -I -df $DUIDFILE $IFACE
