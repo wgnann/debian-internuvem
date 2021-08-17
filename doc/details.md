@@ -64,6 +64,7 @@ These are classes containing architecture specific configs:
 
 Release specific classes:
 
+* BOOKWORM
 * BULLSEYE
 * BUSTER
 * SID
@@ -71,6 +72,7 @@ Release specific classes:
 
 Only for internal use:
 
+* BOOKWORM_BUILD
 * BULLSEYE_BUILD
 * BUSTER_BUILD
 * SID_BUILD
