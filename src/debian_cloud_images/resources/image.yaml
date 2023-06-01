@@ -83,6 +83,9 @@ vendors:
     matchArches: [arm64]
     op: Disable
   - matchArches: [amd64, arm64]
+- name: internuvem
+  faiClasses: [GENERIC, INTERNUVEM, LINUX_VARIANT_CLOUD, TIME_SYSTEMD]
+  size: 2
 - name: nocloud
   faiClasses: [NOCLOUD, LINUX_VARIANT_BASE, TIME_SYSTEMD]
   size: 2
