@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 from debian_cloud_images.api.cdo.image_config import ImageConfigArch
 
 from debian_cloud_images.images.azure_partnerlegacy.s3_version import (
@@ -11,6 +13,11 @@ class TestImagesAzurePartnerlegacyVersion:
             'https://host/api/publishers/publisher/offers/offer?api-version=2017-10-31',
             json={
                 'definition': {
+                    'offer': {
+                        'microsoft-azure-corevm.leadNotificationEmails': '',
+                        'microsoft-azure-corevm.legacyOfferId': '',
+                        'microsoft-azure-corevm.legacyPublisherId': '',
+                    },
                     'plans': [
                         {
                             'planId': 'plan',
@@ -63,6 +70,9 @@ class TestImagesAzurePartnerlegacyVersion:
 
         assert put.last_request.json() == {
             'definition': {
+                'offer': {
+                    'microsoft-azure-corevm.leadNotificationEmails': '',
+                },
                 'plans': [
                     {
                         'planId': 'plan',

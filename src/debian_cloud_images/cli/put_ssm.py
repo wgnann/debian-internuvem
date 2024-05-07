@@ -1,15 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 import logging
 import pathlib
 
-from .base import BaseCommand
+from .base import cli, BaseCommand
 from ..images import Images
 from ..utils.libcloud.other.aws_ssm import SSMConnection
 from ..utils.retry import with_retries
 
 
 class SSMVariableSetter:
-
-    def __init__(self, access_key_id, secret_key, token, images, prefix, config_image, force_overwrite=False, dry_run=False):
+    def __init__(self, access_key_id, secret_key, token, images, prefix, config_image, force_overwrite=False, dry_run=False, only_regions=None):
         self.images = images
         self.access_key_id = access_key_id
         self.secret_key = secret_key
@@ -18,13 +19,18 @@ class SSMVariableSetter:
         self.config_image = config_image
         self.force_overwrite = force_overwrite
         self.dry_run = dry_run
+        self.only_regions = []
         self.__regional_connections = {}
+
+        if only_regions is not None:
+            self.only_regions = only_regions.split(',')
 
     def __call__(self):
 
         # Keep track of keys we've already set, per region
         regional_keys = {}
 
+        put_errors = 0
         for image in self.images.values():
             for upload in image.uploads:
 
@@ -42,6 +48,10 @@ class SSMVariableSetter:
                 region = upload.metadata.labels['aws.amazon.com/region']
                 release_arch = upload.metadata.labels['debian.org/arch']
                 release_name = upload.metadata.labels['debian.org/release']
+
+                if len(self.only_regions) > 0 and region not in self.only_regions:
+                    logging.info(f'Region {region} is not in only_regions, skipping')
+                    continue
 
                 if region not in regional_keys.keys():
                     regional_keys[region] = {}
@@ -70,9 +80,18 @@ class SSMVariableSetter:
                         if self.dry_run:
                             logging.info("Dry-run: set {}={}, overwrite={}".format(key, value, overwrite))
                         else:
-                            with_retries(lambda: self.connection(region).set_variable(key,
-                                                                                      value,
-                                                                                      overwrite=overwrite))
+                            try:
+                                with_retries(lambda: self.connection(region).set_variable(key,
+                                                                                          value,
+                                                                                          overwrite=overwrite),
+                                             max_tries=4)
+                            except Exception:
+                                logging.error("Unable to set {}={} in {}".format(
+                                    key, value, region))
+                                put_errors += 1
+        if put_errors > 0:
+            logging.error("Problems posting to SSM")
+            exit(1)
 
     def connection(self, region):
         if region not in self.__regional_connections:
@@ -86,41 +105,43 @@ class SSMVariableSetter:
         return self.__regional_connections[region]
 
 
-class PutSSMCommand(BaseCommand):
-    argparser_name = 'put-ssm'
-    argparser_help = 'set AWS SSM variable values'
-    argparser_epilog = '''
+@cli.register(
+    'put-ssm',
+    help='set AWS SSM variable values',
+    epilog='''
 config options:
   ec2.ssm.prefix     store AMI details relative to the given SSM path
-'''
-
-    @classmethod
-    def _argparse_register(cls, parser):
-        super()._argparse_register(parser)
-
-        parser.add_argument(
+''',
+    arguments=[
+        cli.prepare_argument(
             'manifests',
             help='read manifests',
             metavar='MANIFEST',
             nargs='*',
             type=pathlib.Path
-        )
-
-        parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--dry-run',
             help="Dry run mode, don't actually do anything",
             action='store_true',
             dest='dry_run',
-        )
-
-        parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--force-overwrite',
             help='forcibly overwrite any existing value',
             action='store_true',
             dest='force_overwrite',
-        )
-
-    def __init__(self, manifests=[], prefix=None, regions=[], force_overwrite=False, dry_run=False, **kw):
+        ),
+        cli.prepare_argument(
+            '--regions',
+            help='limit actions to only the given regions (comma separated)',
+            metavar='REGIONS',
+            dest='only_regions',
+        ),
+    ],
+)
+class PutSSMCommand(BaseCommand):
+    def __init__(self, manifests=[], prefix=None, regions=[], force_overwrite=False, dry_run=False, only_regions=None, **kw):
         super().__init__(**kw)
 
         self.ssm_prefix = self.config_get('ec2.ssm.prefix')
@@ -136,6 +157,7 @@ config options:
             config_image=self.config_image,
             force_overwrite=force_overwrite,
             dry_run=dry_run,
+            only_regions=only_regions,
         )
 
     def __call__(self):
@@ -143,4 +165,4 @@ config options:
 
 
 if __name__ == '__main__':
-    PutSSMCommand._main()
+    cli.main(PutSSMCommand)

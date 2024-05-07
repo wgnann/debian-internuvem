@@ -1,5 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 import argparse
 import collections.abc
+import importlib.resources
 import json
 import logging
 import pathlib
@@ -7,12 +10,12 @@ import re
 
 from datetime import datetime
 
-from .base import BaseCommand
+from .base import cli, BaseCommand
 
+from .. import resources
 from ..build.fai import RunFAI
 from ..build.manifest import CreateManifest
 from ..build.tar import RunTar
-from ..resources import path as resources_path
 from ..utils import argparse_ext
 
 
@@ -65,9 +68,9 @@ class Classes(collections.abc.MutableSet):
 class Check:
     def __init__(self):
         self.classes = Classes()
+        self.classes.add('BUILD_IMAGE')
         self.classes.add('BASE')
         self.classes.add('DEBIAN')
-        self.classes.add('CLOUD')
         self.env = {}
         self.info = {}
 
@@ -113,87 +116,84 @@ class Check:
         self.classes.add('LAST')
 
 
-class BuildCommand(BaseCommand):
-    argparser_name = 'build'
-    argparser_help = 'build Debian images'
-    argparser_usage = '%(prog)s'
+def _argparse_type_date(s):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d")
+    except ValueError:
+        msg = "Given date ({0}) is not valid. Expected format: 'YYYY-MM-DD'".format(s)
+        raise argparse.ArgumentTypeError(msg)
 
-    @classmethod
-    def _argparse_register(cls, parser):
-        super()._argparse_register(parser)
 
-        cls.argparser_argument_release = parser.add_argument(
+@cli.register(
+    'build',
+    help='build Debian images',
+    arguments=[
+        cli.prepare_argument(
             'release_name',
             help='Debian release to build',
             metavar='RELEASE',
-        )
-        cls.argparser_argument_vendor = parser.add_argument(
+        ),
+        cli.prepare_argument(
             'vendor_name',
             help='Vendor to build image for',
             metavar='VENDOR',
-        )
-        cls.argparser_argument_arch = parser.add_argument(
+        ),
+        cli.prepare_argument(
             'arch_name',
             help='Architecture or sub-architecture to build image for',
             metavar='ARCH',
-        )
-        parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--build-id',
             metavar='ID',
             required=True,
             type=BuildId,
-        )
-        cls.argparser_argument_build_type = parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--build-type',
             default='dev',
             dest='build_type_name',
             help='Type of image to build',
             metavar='TYPE',
-        )
-        parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--noop',
             action='store_true',
             help='print the commands which would be executed, but do not run them'
-        )
-        parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--localdebs',
             action='store_true',
             help='Read extra debs from localdebs directory',
-        )
-        parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--output',
             default='.',
             help='write manifests and images to (default: .)',
             metavar='DIR',
             type=pathlib.Path
-        )
-        parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--override-name',
             help='override name of output',
-        )
-        parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--version',
             action=argparse_ext.ActionEnv,
             env='CI_PIPELINE_IID',
             help='version of image',
             metavar='VERSION',
             type=int,
-        )
-        parser.add_argument(
+        ),
+        cli.prepare_argument(
             '--version-date',
             default=datetime.now(),
             help='date part of version (default: today)',
-            type=cls._argparse_type_date,
-        )
-
-    @staticmethod
-    def _argparse_type_date(s):
-        try:
-            return datetime.strptime(s, "%Y-%m-%d")
-        except ValueError:
-            msg = "Given date ({0}) is not valid. Expected format: 'YYYY-MM-DD'".format(s)
-            raise argparse.ArgumentTypeError(msg)
-
+            type=_argparse_type_date,
+        ),
+    ],
+)
+class BuildCommand(BaseCommand):
     def __init__(self, *, release_name=None, vendor_name=None, arch_name=None, version=None, build_id=None, build_type_name=None, localdebs=False, output=None, noop=False, override_name=None, version_date=None, **kw):
         super().__init__(**kw)
 
@@ -203,24 +203,24 @@ class BuildCommand(BaseCommand):
         vendor = self.config_image.vendors.get(vendor_name)
 
         if arch is None:
-            raise argparse.ArgumentError(
-                self.argparser_argument_arch,
-                f'invalid value: {arch_name}, select one of {", ".join(self.config_image.archs)}')
+            self.error(
+                f'argument ARCH: invalid value: {arch_name}, select one of {", ".join(self.config_image.archs)}'
+            )
 
         if build_type is None:
-            raise argparse.ArgumentError(
-                self.argparser_argument_build_type,
-                f'invalid value: {build_type_name}, select one of {", ".join(self.config_image.types)}')
+            self.error(
+                f'argument BUILD_TYPE: invalid value: {build_type_name}, select one of {", ".join(self.config_image.types)}'
+            )
 
         if vendor is None:
-            raise argparse.ArgumentError(
-                self.argparser_argument_vendor,
-                f'invalid value: {vendor_name}, select one of {", ".join(self.config_image.vendors)}')
+            self.error(
+                f'argument VENDOR: invalid value: {vendor_name}, select one of {", ".join(self.config_image.vendors)}'
+            )
 
         if release is None:
-            raise argparse.ArgumentError(
-                self.argparser_argument_release,
-                f'invalid value: {release_name}, select one of {", ".join(self.config_image.releases)}')
+            self.error(
+                f'argument RELEASE: invalid value: {release_name}, select one of {", ".join(self.config_image.releases)}'
+            )
 
         self.noop = noop
 
@@ -243,37 +243,38 @@ class BuildCommand(BaseCommand):
             build_id=self.c.build_id,
         )
 
-        self.env = self.c.env
-        self.env['CLOUD_BUILD_INFO'] = json.dumps(self.c.info)
-        self.env['CLOUD_BUILD_NAME'] = name
-        self.env['CLOUD_BUILD_OUTPUT_DIR'] = output.resolve()
-        self.env['CLOUD_BUILD_SYSTEM_TESTS'] = resources_path('system_tests').as_posix()
+        with importlib.resources.as_file(importlib.resources.files(resources) / 'system_tests') as p_system_tests:
+            self.env = self.c.env
+            self.env['CLOUD_BUILD_INFO'] = json.dumps(self.c.info)
+            self.env['CLOUD_BUILD_NAME'] = name
+            self.env['CLOUD_BUILD_OUTPUT_DIR'] = output.resolve()
+            self.env['CLOUD_BUILD_SYSTEM_TESTS'] = p_system_tests.as_posix()
 
-        output.mkdir(parents=True, exist_ok=True)
+            output.mkdir(parents=True, exist_ok=True)
 
-        image_raw = output / '{}.raw'.format(name)
-        image_tar = output / '{}.tar'.format(name)
-        manifest_fai = output / '{}.build-fai.json'.format(name)
-        manifest_final = output / '{}.build.json'.format(name)
+            image_raw = output / '{}.raw'.format(name)
+            image_tar = output / '{}.tar'.format(name)
+            manifest_dpkg_status = output / '{}.dpkg-status'.format(name)
+            manifest_final = output / '{}.build.json'.format(name)
 
-        self.fai = RunFAI(
-            output_filename=image_raw,
-            release=self.c.release.basename,
-            classes=self.c.classes,
-            size_gb=self.c.vendor.size,
-            env=self.env,
-        )
+            self.fai = RunFAI(
+                output_filename=image_raw,
+                release=self.c.release.basename,
+                classes=self.c.classes,
+                size_gb=self.c.vendor.size,
+                env=self.env,
+            )
 
-        self.tar = RunTar(
-            input_filename=image_raw,
-            output_filename=image_tar,
-        )
+            self.tar = RunTar(
+                input_filename=image_raw,
+                output_filename=image_tar,
+            )
 
-        self.manifest = CreateManifest(
-            input_filename=manifest_fai,
-            output_filename=manifest_final,
-            info=self.c.info,
-        )
+            self.manifest = CreateManifest(
+                dpkg_status=manifest_dpkg_status,
+                output_filename=manifest_final,
+                info=self.c.info,
+            )
 
     def __call__(self):
         self.fai(not self.noop)
@@ -282,4 +283,4 @@ class BuildCommand(BaseCommand):
 
 
 if __name__ == '__main__':
-    BuildCommand._main()
+    cli.main(BuildCommand)

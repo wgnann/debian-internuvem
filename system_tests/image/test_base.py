@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 import pytest
 
 import pathlib
@@ -5,6 +7,7 @@ import pathlib
 
 class TestBase:
     @pytest.mark.parametrize('path', [
+        '/dev',
         '/proc',
         '/run',
         '/sys',

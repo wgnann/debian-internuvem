@@ -1,1 +1,3 @@
-FAI_DEBOOTSTRAP_OPTS="${FAI_DEBOOTSTRAP_OPTS} --arch arm64"
+DEBOOTSTRAP_ARCH=arm64
+# For qemu-user, disable some expensive emulation
+export QEMU_CPU=max,pauth=off
