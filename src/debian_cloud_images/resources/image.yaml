@@ -110,7 +110,7 @@ vendors:
     op: Disable
   - matchArches: [amd64, arm64]
 - name: internuvem
-  faiClasses: [GENERIC, INTERNUVEM, LINUX_VARIANT_CLOUD, TIME_SYSTEMD]
+  faiClasses: [SYSTEM_BOOT, CLOUD, GENERIC, INTERNUVEM, LINUX_VARIANT_CLOUD, TIME_SYSTEMD]
   size: 2
 - name: nocloud
   faiClasses: [SYSTEM_BOOT, NOCLOUD, LINUX_VARIANT_BASE, TIME_SYSTEMD]

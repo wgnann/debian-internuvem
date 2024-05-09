@@ -48,7 +48,7 @@ O ostype é `Other Linux amd64`.
 Recomendamos fortemente ler o `README` do [projeto oficial](https://salsa.debian.org/cloud-team/debian-cloud-images/-/blob/master/README.md).
 
 ## O que mudou em relação ao original?
-  - Trocamos o `build-type` para `official`;
-  - Adicionamos `internuvem` como `vendor`;
-  - Adicionamos o CloudStack como provider à classe `INTERNUVEM`;
-  - Adicionamos o pacote `xe-guest-utilities` à classe `INTERNUVEM`.
+  - Trocamos o `build-type` para `official` no `Makefile`;
+  - Adicionamos `internuvem`, fork do genericcloud, como `vendor` em `src/debian_cloud_images/resources/image.yaml`;
+  - Adicionamos o CloudStack como provider à classe `INTERNUVEM` dentro de `config_space`;
+  - Adicionamos o pacote `xe-guest-utilities` à classe `INTERNUVEM` dentro de `config_space`.
