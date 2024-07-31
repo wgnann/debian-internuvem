@@ -16,6 +16,7 @@ from typing import (
 from .base import cli, cli_internal, BaseCommand
 
 from .. import resources
+from ..build.manifest import CreateManifest
 from ..utils import argparse_ext
 from ..utils import sandbox
 from ..utils.oci_image import OciImage
@@ -209,7 +210,7 @@ class BuildCommand(BaseCommand):
         override_name: Optional[str] = None,
         version_date: Optional[datetime] = None,
         **kw
-    ):
+    ) -> None:
         super().__init__(**kw)
 
         arch = self.config_image.archs.get(arch_name)
@@ -265,16 +266,23 @@ class BuildCommand(BaseCommand):
         self.env['CLOUD_BUILD_NAME'] = 'rootfs'
         self.env['CLOUD_BUILD_OUTPUT_DIR'] = '/fai/output'
 
-    def __call__(self):
+    def __call__(self) -> None:
         output_base = self.output / self.name
         output_tmp = output_base / 'tmp'
-        output_tar = output_tmp / 'rootfs.tar'
+        output_tarzst_root = output_tmp / 'rootfs.data.root.tar.zst'
+        output_tarzst_efi = output_tmp / 'rootfs.data.efi.tar.zst'
         output_log = output_tmp / 'log'
+        output_dpkg_status = output_tmp / 'rootfs.dpkg-status'
 
         script = f'''
         set -euE
         fai -v -u localhost -s file:///fai/config -c '{','.join(self.c.classes)}' install /target
-        tar --directory=/target --create --sort=name --file /fai/output/{output_tar.name} .
+        tar --directory=/target --exclude ./boot/efi/* --create --sort=name --xattrs --xattrs-include='*' . | \\
+          zstd -f -T0 -10 -o /fai/output/{output_tarzst_root.name}
+        if [[ -d /target/boot/efi ]]; then
+          tar --directory=/target --create --sort=name ./boot/efi | \\
+            zstd -f -T0 -10 -o /fai/output/{output_tarzst_efi.name}
+        fi
         '''
 
         oci = OciImage(output_base)
@@ -299,9 +307,40 @@ class BuildCommand(BaseCommand):
             except CalledProcessError as e:
                 sys.exit(e.returncode)
 
-        info_rootfs = oci.store_blob_from_tmp(output_tar.name)
+        info_manifest_digests: list[str] = []
+        info_manifest_layers: list[dict] = []
 
-        info_rootfs_config = oci.store_blob({
+        uuid_fs_root = (output_tmp / 'rootfs.data.root.fsuuid').open().read()
+        uuid_part_root = (output_tmp / 'rootfs.data.root.partuuid').open().read()
+        uuid_part_efi = (output_tmp / 'rootfs.data.efi.partuuid').open().read()
+
+        layer = oci.store_blob_from_tmp(output_tarzst_root.name)
+        info_manifest_digests.append(layer.digest)
+        info_manifest_layers.append({
+            'mediaType': 'application/vnd.oci.image.layer.v1.tar+zstd',
+            'digest': layer.digest,
+            'size': layer.size,
+            'annotations': {
+                'org.debian.cloud.images.internal.part.type': 'root',
+                'org.debian.cloud.images.internal.part.uuid': uuid_part_root,
+                'org.debian.cloud.images.internal.part.fs.uuid': uuid_fs_root,
+            }
+        })
+
+        if output_tarzst_efi.exists():
+            layer = oci.store_blob_from_tmp(output_tarzst_efi.name)
+            info_manifest_digests.append(layer.digest)
+            info_manifest_layers.append({
+                'mediaType': 'application/vnd.oci.image.layer.v1.tar+zstd',
+                'digest': layer.digest,
+                'size': layer.size,
+                'annotations': {
+                    'org.debian.cloud.images.internal.part.type': 'efi',
+                    'org.debian.cloud.images.internal.part.uuid': uuid_part_efi,
+                }
+            })
+
+        info_oci_config = oci.store_blob({
             'architecture': self.c.arch.oci_arch,
             'os': 'linux',
             'config': {
@@ -313,26 +352,37 @@ class BuildCommand(BaseCommand):
                 ],
             },
             'rootfs': {
-                'diff_ids': [info_rootfs.digest],
+                'diff_ids': info_manifest_digests,
                 'type': 'layers',
             },
         })
 
-        info_rootfs_manifest = oci.store_blob({
+        info_oci_manifest = oci.store_blob({
             'schemaVersion': 2,
             'mediaType': 'application/vnd.oci.image.manifest.v1+json',
             'config': {
                 'mediaType': 'application/vnd.oci.image.config.v1+json',
-                'digest': info_rootfs_config.digest,
-                'size': info_rootfs_config.size,
+                'digest': info_oci_config.digest,
+                'size': info_oci_config.size,
             },
-            'layers': [
-                {
-                    'mediaType': 'application/vnd.oci.image.layer.v1.tar',
-                    'digest': info_rootfs.digest,
-                    'size': info_rootfs.size,
-                },
-            ],
+            'layers': info_manifest_layers,
+        })
+
+        info_debian_config = oci.store_blob(CreateManifest(
+            dpkg_status=output_dpkg_status,
+            output_filename=None,
+            info=self.c.info,
+        )())
+
+        info_debian_manifest = oci.store_blob({
+            'schemaVersion': 2,
+            'mediaType': 'application/vnd.debian.cloud.oci.image.manifest.v1+json',
+            'config': {
+                'mediaType': 'application/vnd.debian.cloud.oci.image.config.v1+json',
+                'digest': info_debian_config.digest,
+                'size': info_debian_config.size,
+            },
+            'layers': [],
         })
 
         oci.store_index({
@@ -341,8 +391,23 @@ class BuildCommand(BaseCommand):
             'manifests': [
                 {
                     'mediaType': 'application/vnd.oci.image.manifest.v1+json',
-                    'digest': info_rootfs_manifest.digest,
-                    'size': info_rootfs_manifest.size,
+                    'digest': info_oci_manifest.digest,
+                    'size': info_oci_manifest.size,
+                    'annotations': {
+                        'org.opencontainers.image.ref.name': 'oci',
+                    },
+                    'platform': {
+                        'architecture': self.c.arch.oci_arch,
+                        'os': 'linux'
+                    },
+                },
+                {
+                    'mediaType': 'application/vnd.debian.cloud.oci.image.manifest.v1+json',
+                    'digest': info_debian_manifest.digest,
+                    'size': info_debian_manifest.size,
+                    'annotations': {
+                        'org.opencontainers.image.ref.name': 'debian',
+                    },
                     'platform': {
                         'architecture': self.c.arch.oci_arch,
                         'os': 'linux'

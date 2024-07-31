@@ -4,14 +4,12 @@ Configurações adicionais baseadas na [imagem oficial do Debian para nuvem](htt
 
 Implementa a classe `INTERNUVEM`, criando um modelo da imagem compatível com a internuvem.usp.br.
 
-
 ## Como usar
 
 Build testado no Debian 11. Deve funcionar no 12.
 
 ```bash
 apt install ca-certificates debsums dosfstools fai-server fai-setup-storage fdisk make python3 python3-libcloud python3-marshmallow python3-pytest python3-yaml qemu-utils udev
-
 ```
 
 Depois basta:
@@ -44,6 +42,8 @@ qemu-img convert -f raw -O vpc image_bookworm_internuvem_amd64.raw debian12.vhd
   * requireshvm.
 
 O ostype é `Other Linux amd64`.
+
+Não marcamos dynamicallyscalable, pois a interNuvem não tem essa funcionalidade.
 
 Recomendamos fortemente ler o `README` do [projeto oficial](https://salsa.debian.org/cloud-team/debian-cloud-images/-/blob/master/README.md).
 
